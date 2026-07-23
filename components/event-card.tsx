@@ -1,10 +1,11 @@
 "use client";
 
-import { ChevronDown, ChevronRight, CircleAlert, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { NormalizedEvent } from "@/lib/types";
+import type { NormalizedEvent, ProviderId } from "@/lib/types";
+import { EventIcon } from "./event-icon";
 
 const labels: Record<NormalizedEvent["kind"], string> = {
   user_message: "User",
@@ -32,14 +33,14 @@ function DataBlock({ value }: { value: unknown }) {
   return <pre className="event-data">{text}</pre>;
 }
 
-export function EventCard({ event, selected, onSelect }: { event: NormalizedEvent; selected: boolean; onSelect: () => void }) {
+export function EventCard({ event, provider, selected, onSelect }: { event: NormalizedEvent; provider: ProviderId; selected: boolean; onSelect: () => void }) {
   const [expanded, setExpanded] = useState(event.kind === "tool_result");
   const expandable = event.input != null || event.output != null;
   return (
     <article className={`timeline-row event-${event.kind} ${selected ? "is-selected" : ""}`}>
       <time>{formatTime(event.timestamp)}</time>
-      <span className="event-node" aria-hidden="true">
-        {event.kind === "error" ? <CircleAlert size={15} /> : event.kind.startsWith("tool_") ? <Wrench size={14} /> : labels[event.kind].slice(0, 1)}
+      <span className="event-node" data-event-icon={event.kind} aria-hidden="true">
+        <EventIcon kind={event.kind} provider={provider} />
       </span>
       <div className="event-card" role="button" tabIndex={0} onClick={onSelect} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") { key.preventDefault(); onSelect(); } }} aria-pressed={selected}>
         <span className="event-heading">
@@ -68,5 +69,3 @@ export function EventCard({ event, selected, onSelect }: { event: NormalizedEven
     </article>
   );
 }
-
-

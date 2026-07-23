@@ -273,7 +273,7 @@ export function Explorer() {
               <div className="view-tabs"><button className={view === "timeline" ? "active" : ""} type="button" onClick={() => setView("timeline")}>Timeline</button><button className={view === "conversation" ? "active" : ""} type="button" onClick={() => setView("conversation")}>Conversation</button></div>
               <div className="filter-bar">{filterGroups.map((group) => <button key={group.id} className={filter === group.id ? "active" : ""} type="button" onClick={() => setFilter(group.id)}>{group.label}</button>)}</div>
               <div className="timeline">
-                {events.length ? events.map((value) => <EventCard key={value.id} event={value} selected={selectedEvent?.id === value.id} onSelect={() => chooseEvent(value)} />) : <div className="no-events">No events match this filter.</div>}
+                {events.length ? events.map((value) => <EventCard key={value.id} event={value} provider={session.provider} selected={selectedEvent?.id === value.id} onSelect={() => chooseEvent(value)} />) : <div className="no-events">No events match this filter.</div>}
               </div>
             </>
           )}
@@ -304,5 +304,4 @@ export function Explorer() {
 function CircleError() {
   return <span aria-hidden="true" className="error-dot">!</span>;
 }
-
 
