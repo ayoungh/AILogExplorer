@@ -1,0 +1,4 @@
+.timeline-row.is-selected .event-card {
+  border-color: var(--blue);
+  box-shadow: inset 3px 0 0 var(--blue);
+}

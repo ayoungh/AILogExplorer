@@ -1,0 +1,46 @@
+# Dependencies and generated output
+/node_modules/
+/.next/
+/.pnpm-store/
+/coverage/
+*.log
+*.tsbuildinfo
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Private local indexes and imported AI histories
+/.data/
+/exports/
+/screenshots/
+/docs/screenshots/
+*.data
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.jsonl
+
+# Screenshots and recorded media are excluded from the first public release
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.heic
+*.tiff
+*.bmp
+*.pdf
+*.mov
+*.mp4
+*.m4v
+*.avi
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp

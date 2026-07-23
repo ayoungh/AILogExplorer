@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore dependencies, generated output, and the private local index."
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)\.pnpm-store/''',
+  '''(^|/)coverage/''',
+  '''(^|/)\.data/''',
+]
