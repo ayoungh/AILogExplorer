@@ -7,7 +7,7 @@ import { exportAdapter } from "./exports";
 export const claudeCodeAdapter = new ClaudeJsonlAdapter(false);
 export const claudeDesktopAdapter = new ClaudeJsonlAdapter(true);
 
-export const adapters: SourceAdapter[] = [codexAdapter, claudeCodeAdapter, cursorAdapter, exportAdapter];
+export const adapters: SourceAdapter[] = [codexAdapter, claudeDesktopAdapter, claudeCodeAdapter, cursorAdapter, exportAdapter];
 
 export async function detectAdapter(filePath: string, hint?: string) {
   if (hint === "claude-desktop" && await claudeDesktopAdapter.detect(filePath)) return claudeDesktopAdapter;
@@ -16,5 +16,4 @@ export async function detectAdapter(filePath: string, hint?: string) {
 }
 
 export { codexAdapter, cursorAdapter, exportAdapter };
-
 

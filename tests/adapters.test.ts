@@ -7,6 +7,7 @@ import { ClaudeJsonlAdapter } from "@/lib/adapters/claude";
 import { codexAdapter } from "@/lib/adapters/codex";
 import { cursorAdapter } from "@/lib/adapters/cursor";
 import { exportAdapter } from "@/lib/adapters/exports";
+import { detectAdapter } from "@/lib/adapters";
 import type { ImportDiagnostic, ParsedSession } from "@/lib/types";
 
 const tempDirectories: string[] = [];
@@ -48,6 +49,24 @@ describe("Claude adapter", () => {
     expect(sessions[0].events.map((item) => item.kind)).toEqual(["user_message", "reasoning", "tool_call", "assistant_message", "assistant_message", "tool_result"]);
     expect(sessions[0].events.find((item) => item.text === "Object text")?.kind).toBe("assistant_message");
     expect(sessions[0].events.find((item) => item.kind === "tool_call")?.toolName).toBe("Read");
+  });
+
+  it("distinguishes ordinary Claude Code rows from audited Claude Desktop rows", async () => {
+    const codeFile = await tempFile("code.jsonl", JSON.stringify({
+      type: "user",
+      sessionId: "code-session",
+      message: { role: "user", content: "Synthetic code prompt" },
+    }));
+    const desktopFile = await tempFile("audit.jsonl", JSON.stringify({
+      type: "user",
+      session_id: "desktop-session",
+      _audit_timestamp: "2026-01-01T00:00:00Z",
+      _audit_hmac: "example-audit-hmac",
+      message: { role: "user", content: "Synthetic desktop prompt" },
+    }));
+
+    expect((await detectAdapter(codeFile))?.id).toBe("claude-code");
+    expect((await detectAdapter(desktopFile))?.id).toBe("claude-desktop");
   });
 });
 
@@ -122,5 +141,62 @@ describe("conversation export adapter", () => {
     const [session] = await parsed(exportAdapter, file);
     expect(session.provider).toBe("chatgpt");
     expect(session.events.map((item) => item.kind)).toEqual(["user_message", "assistant_message", "unknown"]);
+  });
+});
+
+describe("provider-native example fixtures", () => {
+  const examples = [
+    {
+      name: "codex-example.jsonl",
+      provider: "codex",
+      title: "[Example] Add an offline retry queue to Lantern Notes and cover it with tests.",
+      kinds: ["user_message", "reasoning", "tool_call", "tool_result", "assistant_message", "usage"],
+    },
+    {
+      name: "claude-code-example.jsonl",
+      provider: "claude-code",
+      title: "[Example] Fix local-day calendar grouping",
+      kinds: ["user_message", "reasoning", "tool_call", "tool_result", "assistant_message"],
+    },
+    {
+      name: "claude-desktop-example-audit.jsonl",
+      provider: "claude-desktop",
+      title: "[Example] Draft a launch brief",
+      kinds: ["user_message", "system", "attachment", "reasoning", "tool_call", "tool_result", "assistant_message"],
+    },
+    {
+      name: "cursor-example.vscdb",
+      provider: "cursor",
+      title: "[Example] Repair keyboard search selection",
+      kinds: ["user_message", "assistant_message", "reasoning", "tool_call", "tool_result"],
+    },
+  ] as const;
+
+  for (const example of examples) {
+    it(`detects and parses ${example.name}`, async () => {
+      const file = path.join(process.cwd(), "examples", "provider-native", example.name);
+      const adapter = await detectAdapter(file);
+      expect(adapter?.id).toBe(example.provider);
+      const sessions = await parsed(adapter!, file);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].provider).toBe(example.provider);
+      expect(sessions[0].title).toBe(example.title);
+      expect(sessions[0].projectPath).toMatch(/^\/example-workspace\//);
+      const actualKinds = sessions[0].events.map((item) => item.kind);
+      for (const kind of example.kinds) expect(actualKinds).toContain(kind);
+      expect(sessions[0].events.some((item) => JSON.stringify(item.raw).includes("\"synthetic\":true"))).toBe(true);
+    });
+  }
+
+  it("preserves paired tool call identifiers in the generated JSONL fixtures", async () => {
+    for (const name of ["codex-example.jsonl", "claude-code-example.jsonl", "claude-desktop-example-audit.jsonl"]) {
+      const file = path.join(process.cwd(), "examples", "provider-native", name);
+      const adapter = await detectAdapter(file);
+      const [session] = await parsed(adapter!, file);
+      const calls = new Set(session.events.filter((item) => item.kind === "tool_call").map((item) => item.callId));
+      const results = session.events.filter((item) => item.kind === "tool_result").map((item) => item.callId);
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every((callId) => callId !== null && calls.has(callId))).toBe(true);
+    }
   });
 });

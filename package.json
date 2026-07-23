@@ -17,6 +17,8 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
+    "examples:generate": "node scripts/generate-examples.mjs",
+    "examples:check": "node scripts/generate-examples.mjs --check",
     "check:public": "node scripts/check-public-tree.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

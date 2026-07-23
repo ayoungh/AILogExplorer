@@ -28,6 +28,13 @@ other private information. Contributions must therefore:
   with clearly synthetic values.
 - Describe a sensitive-data bug without attaching the affected source data.
 
+The four provider-native files under `examples/provider-native` are generated
+from `scripts/example-fixtures.mjs` and are the only exceptions to the private
+file-format block. Do not edit them directly or add another exception. Update
+the canonical synthetic definitions, run `pnpm examples:generate`, and confirm
+`pnpm examples:check` instead. Real histories remain prohibited even when they
+have been redacted.
+
 The repository ignores common private formats and `pnpm check:public` scans
 every file that could be committed. If a future contribution genuinely needs a
 binary fixture or product image, discuss a narrowly scoped, sanitized

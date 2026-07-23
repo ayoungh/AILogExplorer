@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { detectAdapter } from "@/lib/adapters";
+import type { ImportDiagnostic } from "@/lib/types";
 import type { ParsedSession } from "@/lib/types";
 
 let directory: string | undefined;
@@ -29,6 +31,21 @@ function session(events: ParsedSession["events"]): ParsedSession {
     available: true,
     events,
   };
+}
+
+async function parseExample(name: string) {
+  const file = path.join(process.cwd(), "examples", "provider-native", name);
+  const adapter = await detectAdapter(file);
+  if (!adapter) throw new Error(`No adapter detected for ${name}`);
+  const sessions: ParsedSession[] = [];
+  for await (const value of adapter.parse(file)) {
+    if ("events" in value) sessions.push(value);
+    else {
+      const diagnostic = value as ImportDiagnostic;
+      throw new Error(`${name}: ${diagnostic.message}`);
+    }
+  }
+  return sessions;
 }
 
 afterEach(async () => {
@@ -70,5 +87,37 @@ describe("repository indexing", () => {
       { sequence: 0, timestamp: null, kind: "assistant_message", role: "assistant", turnId: "t2", callId: null, parentId: null, toolName: null, text: "replacement", input: null, output: null, status: null, durationMs: null, inputTokens: null, outputTokens: null, totalTokens: null, externalId: "replacement", raw: { replacement: true } },
     ]));
     expect(repo.listEvents("session-1").map((event) => event.text)).toEqual(["replacement"]);
+  });
+
+  it("indexes, searches, filters, and idempotently re-imports every example provider", async () => {
+    const { repository: repo } = await repository();
+    const names = [
+      "codex-example.jsonl",
+      "claude-code-example.jsonl",
+      "claude-desktop-example-audit.jsonl",
+      "cursor-example.vscdb",
+    ];
+
+    for (const name of names) {
+      const [example] = await parseExample(name);
+      await repo.saveParsedSession(example);
+    }
+
+    const firstOverview = repo.overview();
+    expect(firstOverview.totalSessions).toBe(4);
+    for (const provider of ["codex", "claude-code", "claude-desktop", "cursor"]) {
+      expect(firstOverview.providers.find((item) => item.id === provider)?.sessionCount).toBe(1);
+    }
+    expect(repo.searchEvents("Example").length).toBeGreaterThanOrEqual(4);
+    const toolEvents = repo.listEvents("codex:example-codex-lantern-notes", ["tool_call"]);
+    expect(toolEvents.length).toBeGreaterThan(0);
+    expect(repo.getEvent(toolEvents[0].id)?.raw).toMatchObject({ payload: { synthetic: true } });
+
+    for (const name of names) {
+      const [example] = await parseExample(name);
+      await repo.saveParsedSession(example);
+    }
+
+    expect(repo.overview().totalSessions).toBe(4);
   });
 });

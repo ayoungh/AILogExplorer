@@ -48,7 +48,9 @@ export class ClaudeJsonlAdapter implements SourceAdapter {
       await handle.close();
       const first = buffer.subarray(0, bytesRead).toString("utf8").split("\n")[0];
       const parsed = JSON.parse(first) as Json;
-      return ["user", "assistant", "queue-operation", "attachment", "system"].includes(String(parsed.type));
+      const supported = ["user", "assistant", "queue-operation", "attachment", "system"].includes(String(parsed.type));
+      const audited = "_audit_timestamp" in parsed || "_audit_hmac" in parsed;
+      return supported && (this.id === "claude-desktop" ? audited : !audited);
     } catch { return false; }
   }
 
@@ -102,5 +104,4 @@ export class ClaudeJsonlAdapter implements SourceAdapter {
     };
   }
 }
-
 

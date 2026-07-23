@@ -11,7 +11,17 @@ describe("public tree privacy policy", () => {
     expect(pathPolicyIssues(["docs", "screenshots", "desktop.png"].join("/"))).toContain("private or generated directory");
     expect(pathPolicyIssues(["private", "session.jsonl"].join("/"))).toContain("AI log export");
     expect(pathPolicyIssues(["cache", "index.sqlite-wal"].join("/"))).toContain("database sidecar");
+    expect(pathPolicyIssues(["private", "state.vscdb"].join("/"))).toContain("database");
     expect(pathPolicyIssues(".env.local")).toContain("environment file");
+  });
+
+  it("allows only the exact generated provider-native fixture paths", () => {
+    expect(pathPolicyIssues("examples/provider-native/codex-example.jsonl")).toEqual([]);
+    expect(pathPolicyIssues("examples/provider-native/claude-code-example.jsonl")).toEqual([]);
+    expect(pathPolicyIssues("examples/provider-native/claude-desktop-example-audit.jsonl")).toEqual([]);
+    expect(pathPolicyIssues("examples/provider-native/cursor-example.vscdb")).toEqual([]);
+    expect(pathPolicyIssues("examples/provider-native/another-example.jsonl")).toContain("AI log export");
+    expect(pathPolicyIssues("examples/provider-native/cursor-example-copy.vscdb")).toContain("database");
   });
 
   it("rejects personal paths and non-example email addresses", () => {

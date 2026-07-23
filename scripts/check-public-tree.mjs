@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { EXAMPLE_FIXTURE_PATHS } from "./example-fixtures.mjs";
 
 const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -23,8 +24,11 @@ const privateExtensions = new Map([
   [".sqlite", "database"],
   [".sqlite3", "database"],
   [".tiff", "image"],
+  [".vscdb", "database"],
   [".webp", "image"],
 ]);
+
+const syntheticFixturePaths = new Set(EXAMPLE_FIXTURE_PATHS);
 
 const privateDirectoryNames = new Set([
   ".data",
@@ -62,6 +66,7 @@ export function pathPolicyIssues(candidatePath) {
   const basename = segments.at(-1) || normalized;
   const lowerBasename = basename.toLowerCase();
   const extension = path.extname(lowerBasename);
+  const isSyntheticFixture = syntheticFixturePaths.has(normalized);
   const issues = [];
 
   if (segments.some((segment) => privateDirectoryNames.has(segment.toLowerCase()))) {
@@ -76,7 +81,7 @@ export function pathPolicyIssues(candidatePath) {
   if (lowerBasename.endsWith("-wal") || lowerBasename.endsWith("-shm")) {
     issues.push("database sidecar");
   }
-  if (privateExtensions.has(extension)) {
+  if (privateExtensions.has(extension) && !isSyntheticFixture) {
     issues.push(privateExtensions.get(extension));
   }
 
