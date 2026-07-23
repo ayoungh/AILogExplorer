@@ -29,6 +29,9 @@ const privateExtensions = new Map([
 ]);
 
 const syntheticFixturePaths = new Set(EXAMPLE_FIXTURE_PATHS);
+const approvedShowcasePaths = new Set([
+  "screenshot.png",
+]);
 
 const privateDirectoryNames = new Set([
   ".data",
@@ -67,6 +70,7 @@ export function pathPolicyIssues(candidatePath) {
   const lowerBasename = basename.toLowerCase();
   const extension = path.extname(lowerBasename);
   const isSyntheticFixture = syntheticFixturePaths.has(normalized);
+  const isApprovedShowcase = approvedShowcasePaths.has(normalized);
   const issues = [];
 
   if (segments.some((segment) => privateDirectoryNames.has(segment.toLowerCase()))) {
@@ -81,7 +85,7 @@ export function pathPolicyIssues(candidatePath) {
   if (lowerBasename.endsWith("-wal") || lowerBasename.endsWith("-shm")) {
     issues.push("database sidecar");
   }
-  if (privateExtensions.has(extension) && !isSyntheticFixture) {
+  if (privateExtensions.has(extension) && !isSyntheticFixture && !isApprovedShowcase) {
     issues.push(privateExtensions.get(extension));
   }
 

@@ -3,6 +3,8 @@
 AI Log Explorer is an open-source, local-only Next.js app for exploring AI
 conversation and agent histories without uploading them.
 
+![AI Log Explorer showing a Codex session timeline and event details](screenshot.png)
+
 It currently understands histories from:
 
 - Claude Code
@@ -20,8 +22,9 @@ material on your Mac:
 - The server binds to `127.0.0.1` and rejects non-loopback requests.
 - Source histories are opened read-only.
 - The generated search index stays in `.data/ailogexplorer.sqlite`.
-- `.data`, log exports, databases, screenshots, and generated files are
-  excluded from Git.
+- `.data`, log exports, databases, private screenshots, and generated files
+  are excluded from Git. The reviewed app screenshot above is the sole
+  screenshot exception.
 - There is no telemetry, analytics, cloud storage, remote font, or hosted model
   request.
 
@@ -143,11 +146,12 @@ pnpm build
 ```
 
 `check:public` examines tracked files and untracked files that are not ignored.
-It rejects common AI-log exports, databases, screenshots, personal home paths,
-non-example email addresses, and credential formats before they can be
-published. The four generated files under `examples/provider-native` are the
-only provider-native fixture exceptions and are independently checked against
-their canonical synthetic definitions.
+It rejects common AI-log exports, databases, screenshots other than the exact
+root `screenshot.png` showcase asset, personal home paths, non-example email
+addresses, and credential formats before they can be published. The four
+generated files under `examples/provider-native` are the only provider-native
+fixture exceptions and are independently checked against their canonical
+synthetic definitions.
 
 ## Development
 

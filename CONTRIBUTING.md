@@ -23,17 +23,19 @@ other private information. Contributions must therefore:
 - Use only synthetic data in tests, examples, bug reports, and documentation.
 - Never include real AI logs, exports, SQLite databases, environment files, or
   credentials.
-- Never include screenshots, screen recordings, or other captured media.
+- Never include screenshots, screen recordings, or other captured media beyond
+  the reviewed root `screenshot.png` showcase asset.
 - Replace user names, email addresses, project names, and absolute home paths
   with clearly synthetic values.
 - Describe a sensitive-data bug without attaching the affected source data.
 
 The four provider-native files under `examples/provider-native` are generated
-from `scripts/example-fixtures.mjs` and are the only exceptions to the private
-file-format block. Do not edit them directly or add another exception. Update
-the canonical synthetic definitions, run `pnpm examples:generate`, and confirm
-`pnpm examples:check` instead. Real histories remain prohibited even when they
-have been redacted.
+from `scripts/example-fixtures.mjs` and, together with the reviewed root
+`screenshot.png` showcase asset, are the only exceptions to the private
+file-format block. Do not edit the generated fixtures directly or add another
+exception. Update the canonical synthetic definitions, run
+`pnpm examples:generate`, and confirm `pnpm examples:check` instead. Real
+histories remain prohibited even when they have been redacted.
 
 The repository ignores common private formats and `pnpm check:public` scans
 every file that could be committed. If a future contribution genuinely needs a

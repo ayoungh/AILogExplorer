@@ -9,10 +9,17 @@ describe("public tree privacy policy", () => {
 
   it("rejects screenshots, databases, exported logs, and environment files", () => {
     expect(pathPolicyIssues(["docs", "screenshots", "desktop.png"].join("/"))).toContain("private or generated directory");
+    expect(pathPolicyIssues("desktop.png")).toContain("image or screenshot");
     expect(pathPolicyIssues(["private", "session.jsonl"].join("/"))).toContain("AI log export");
     expect(pathPolicyIssues(["cache", "index.sqlite-wal"].join("/"))).toContain("database sidecar");
     expect(pathPolicyIssues(["private", "state.vscdb"].join("/"))).toContain("database");
     expect(pathPolicyIssues(".env.local")).toContain("environment file");
+  });
+
+  it("allows only the approved app showcase screenshot", () => {
+    expect(pathPolicyIssues("screenshot.png")).toEqual([]);
+    expect(pathPolicyIssues("docs/screenshot.png")).toContain("image or screenshot");
+    expect(pathPolicyIssues("screenshot-copy.png")).toContain("image or screenshot");
   });
 
   it("allows only the exact generated provider-native fixture paths", () => {
