@@ -31,20 +31,6 @@
 !/examples/provider-native/claude-desktop-example-audit.jsonl
 !/examples/provider-native/cursor-example.vscdb
 
-# Screenshots and recorded media are excluded from the first public release
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
-*.heic
-*.tiff
-*.bmp
-*.pdf
-*.mov
-*.mp4
-*.m4v
-*.avi
 
 # OS and editor files
 .DS_Store
