@@ -30,6 +30,7 @@ const privateExtensions = new Map([
 
 const syntheticFixturePaths = new Set(EXAMPLE_FIXTURE_PATHS);
 const approvedShowcasePaths = new Set([
+  "data-map-screenshot.png",
   "screenshot.png",
 ]);
 
