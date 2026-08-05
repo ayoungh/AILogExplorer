@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import type { EventKind, JobRecord, NormalizedEvent, NormalizedSession, ParsedSession, ProviderId } from "@/lib/types";
+import type { EventContentPart, EventKind, EventSummary, JobRecord, NormalizedEvent, NormalizedSession, ParsedSession, ProviderId } from "@/lib/types";
 import { decodeRaw, encodeRawAsync } from "./compression";
 import { getDb } from "./db";
 
@@ -209,8 +209,21 @@ type EventRow = {
   role: string | null; turn_id: string | null; call_id: string | null; parent_id: string | null;
   tool_name: string | null; text: string | null; input_json: string | Buffer | null; output_json: string | Buffer | null;
   status: string | null; duration_ms: number | null; input_tokens: number | null; output_tokens: number | null;
-  total_tokens: number | null; raw_payload: Buffer; raw_encoding: string; raw_record_count: number;
+  total_tokens: number | null; raw_payload: Buffer; raw_encoding: string; raw_bytes: number; raw_record_count: number;
 };
+
+type EventSummaryRow = Omit<EventRow, "input_json" | "output_json" | "raw_payload" | "raw_encoding"> & {
+  has_input: number;
+  has_output: number;
+};
+
+const EVENT_SUMMARY_COLUMNS = `
+  e.id, e.session_id, e.sequence, e.timestamp, e.kind, e.role, e.turn_id, e.call_id,
+  e.parent_id, e.tool_name, e.text, e.status, e.duration_ms, e.input_tokens,
+  e.output_tokens, e.total_tokens, e.raw_bytes, e.raw_record_count,
+  e.input_json IS NOT NULL AS has_input,
+  e.output_json IS NOT NULL AS has_output
+`;
 
 function parseJson(value: string | Buffer | null) {
   if (!value) return null;
@@ -226,6 +239,17 @@ function mapEvent(row: EventRow, includeRaw = false): NormalizedEvent {
     status: row.status, durationMs: row.duration_ms, inputTokens: row.input_tokens,
     outputTokens: row.output_tokens, totalTokens: row.total_tokens, rawRecordCount: row.raw_record_count,
     ...(includeRaw ? { raw: decodeRaw(row.raw_payload, row.raw_encoding) } : {}),
+  };
+}
+
+function mapEventSummary(row: EventSummaryRow): EventSummary {
+  return {
+    id: row.id, sessionId: row.session_id, sequence: row.sequence, timestamp: row.timestamp,
+    kind: row.kind, role: row.role, turnId: row.turn_id, callId: row.call_id, parentId: row.parent_id,
+    toolName: row.tool_name, text: row.text, status: row.status, durationMs: row.duration_ms,
+    inputTokens: row.input_tokens, outputTokens: row.output_tokens, totalTokens: row.total_tokens,
+    hasInput: Boolean(row.has_input), hasOutput: Boolean(row.has_output),
+    rawBytes: row.raw_bytes, rawRecordCount: row.raw_record_count,
   };
 }
 
@@ -246,21 +270,86 @@ export function listEvents(sessionId: string, kinds: EventKind[] = [], limit = 5
   return rows.map((row) => mapEvent(row));
 }
 
+export function listEventPage(options: { sessionId: string; kinds?: EventKind[]; limit?: number; offset?: number; anchorEventId?: string }) {
+  const db = getDb();
+  const kinds = options.kinds || [];
+  const limit = Math.min(Math.max(options.limit || 200, 1), 200);
+  let offset = Math.max(options.offset || 0, 0);
+  const kindFilter = kinds.length ? ` AND e.kind IN (${kinds.map(() => "?").join(",")})` : "";
+  const baseParams: unknown[] = [options.sessionId, ...kinds];
+  let anchorFound = !options.anchorEventId;
+
+  if (options.anchorEventId) {
+    const anchor = db.prepare("SELECT sequence, kind FROM events WHERE id = ? AND session_id = ?")
+      .get(options.anchorEventId, options.sessionId) as { sequence: number; kind: EventKind } | undefined;
+    anchorFound = Boolean(anchor && (!kinds.length || kinds.includes(anchor.kind)));
+    if (anchorFound && anchor) {
+      const before = db.prepare(`SELECT COUNT(*) count FROM events e WHERE e.session_id = ?${kindFilter} AND e.sequence < ?`)
+        .get(...baseParams, anchor.sequence) as { count: number };
+      offset = Math.floor(before.count / limit) * limit;
+    } else {
+      offset = 0;
+    }
+  }
+
+  const total = (db.prepare(`SELECT COUNT(*) count FROM events e WHERE e.session_id = ?${kindFilter}`)
+    .get(...baseParams) as { count: number }).count;
+  const rows = db.prepare(`
+    SELECT ${EVENT_SUMMARY_COLUMNS}
+    FROM events e
+    WHERE e.session_id = ?${kindFilter}
+    ORDER BY e.sequence
+    LIMIT ? OFFSET ?
+  `).all(...baseParams, limit + 1, offset) as EventSummaryRow[];
+  const hasNext = rows.length > limit;
+
+  return {
+    data: rows.slice(0, limit).map(mapEventSummary),
+    total,
+    offset,
+    previousOffset: offset > 0 ? Math.max(0, offset - limit) : null,
+    nextOffset: hasNext ? offset + limit : null,
+    anchorFound,
+  };
+}
+
 export function getEvent(id: string) {
   const row = getDb().prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
   return row ? mapEvent(row, true) : null;
+}
+
+export type StoredEventContent = {
+  data: Buffer;
+  encoding: "identity" | "br";
+  bytes: number | null;
+};
+
+export function getEventContent(id: string, part: EventContentPart): StoredEventContent | null {
+  const db = getDb();
+  if (part === "raw") {
+    const row = db.prepare("SELECT raw_payload value, raw_encoding encoding, raw_bytes bytes FROM events WHERE id = ?")
+      .get(id) as { value: Buffer; encoding: "identity" | "br"; bytes: number } | undefined;
+    return row ? { data: row.value, encoding: row.encoding, bytes: row.bytes } : null;
+  }
+
+  const column = part === "input" ? "input_json" : "output_json";
+  const row = db.prepare(`SELECT ${column} value FROM events WHERE id = ?`).get(id) as { value: string | Buffer | null } | undefined;
+  if (!row?.value) return null;
+  if (Buffer.isBuffer(row.value)) return { data: row.value, encoding: "br", bytes: null };
+  return { data: Buffer.from(row.value, "utf8"), encoding: "identity", bytes: Buffer.byteLength(row.value) };
 }
 
 export function searchEvents(query: string, provider?: ProviderId, limit = 80, offset = 0) {
   const providerFilter = provider ? "AND f.provider = ?" : "";
   const params = provider ? [query, provider, limit, offset] : [query, limit, offset];
   const rows = getDb().prepare(`
-    SELECT e.*, f.provider AS search_provider, snippet(event_fts, 3, '<mark>', '</mark>', '…', 18) AS snippet
+    SELECT ${EVENT_SUMMARY_COLUMNS}, f.provider AS search_provider,
+      snippet(event_fts, 3, '<mark>', '</mark>', '…', 18) AS snippet
     FROM event_fts f JOIN events e ON e.id = f.event_id
     WHERE event_fts MATCH ? ${providerFilter}
     ORDER BY bm25(event_fts) LIMIT ? OFFSET ?
-  `).all(...params) as Array<EventRow & { snippet: string; search_provider: ProviderId }>;
-  return rows.map((row) => ({ ...mapEvent(row), snippet: row.snippet, provider: row.search_provider }));
+  `).all(...params) as Array<EventSummaryRow & { snippet: string; search_provider: ProviderId }>;
+  return rows.map((row) => ({ ...mapEventSummary(row), snippet: row.snippet, provider: row.search_provider }));
 }
 
 export function overview() {
@@ -291,4 +380,3 @@ export function mapJob(row: Record<string, unknown>): JobRecord {
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   };
 }
-

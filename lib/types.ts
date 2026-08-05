@@ -140,6 +140,32 @@ export type NormalizedEvent = {
   rawRecordCount?: number;
 };
 
+export type EventSummary = Omit<NormalizedEvent, "input" | "output" | "raw"> & {
+  hasInput: boolean;
+  hasOutput: boolean;
+  rawBytes: number;
+  rawRecordCount: number;
+};
+
+export type EventContentPart = "input" | "output" | "raw";
+
+export type EventContentPreview = {
+  part: EventContentPart;
+  text: string;
+  truncated: boolean;
+  bytes: number | null;
+};
+
+export type EventPageResponse = {
+  session: NormalizedSession;
+  data: EventSummary[];
+  total: number;
+  offset: number;
+  previousOffset: number | null;
+  nextOffset: number | null;
+  anchorFound: boolean;
+};
+
 export type ParsedSession = Omit<NormalizedSession, "eventCount" | "diagnosticsCount"> & {
   metadata?: unknown;
   events: ParsedEvent[];
@@ -190,4 +216,3 @@ export interface SourceAdapter {
   detect(path: string): Promise<boolean>;
   parse(path: string): AsyncGenerator<ParsedSession | ImportDiagnostic>;
 }
-

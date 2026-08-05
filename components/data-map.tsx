@@ -1,8 +1,10 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Brain, Check, ChevronLeft, ChevronRight, CircleHelp, Copy, Database, FileQuestion, Gauge, Info, MessageCircle, Paperclip, RefreshCw, Settings2, TerminalSquare, Wrench, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { DataConceptId, DataMapResponse, DataMapSampleResponse, ProviderId } from "@/lib/types";
+import { dataMapQueryOptions, dataMapSampleQueryOptions } from "@/lib/client/api";
+import type { DataConceptId, ProviderId } from "@/lib/types";
 import { AppModeSwitch } from "./app-mode-switch";
 import { ProviderMark } from "./provider-mark";
 
@@ -22,17 +24,10 @@ function compact(value: number) {
   return Intl.NumberFormat(undefined, { notation: value >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
 }
 
-async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, { cache: "no-store", signal });
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || response.statusText);
-  return response.json() as Promise<T>;
-}
-
 export function DataMap({
   conceptId,
   provider,
   sampleIndex,
-  refreshKey,
   sidebarOpen,
   inspectorOpen,
   onMode,
@@ -46,7 +41,6 @@ export function DataMap({
   conceptId: DataConceptId;
   provider: ProviderId | null;
   sampleIndex: number;
-  refreshKey: number;
   sidebarOpen: boolean;
   inspectorOpen: boolean;
   onMode: (mode: "logs" | "data-map") => void;
@@ -57,21 +51,10 @@ export function DataMap({
   onInspectorOpen: () => void;
   onInspectorClose: () => void;
 }) {
-  const [data, setData] = useState<DataMapResponse | null>(null);
-  const [sample, setSample] = useState<DataMapSampleResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [sampleTab, setSampleTab] = useState<"native" | "normalized">("native");
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetchJson<DataMapResponse>("/api/data-map", controller.signal)
-      .then(setData)
-      .catch((reason) => { if (reason.name !== "AbortError") setError(reason instanceof Error ? reason.message : "Could not load the data map"); })
-      .finally(() => setLoading(false));
-    return () => controller.abort();
-  }, [refreshKey]);
+  const dataQuery = useQuery(dataMapQueryOptions());
+  const data = dataQuery.data;
 
   const concept = useMemo(() => data?.concepts.find((item) => item.id === conceptId) || data?.concepts[0] || null, [data, conceptId]);
   const selectedProvider = concept?.providers.find((item) => item.provider === provider) || concept?.providers.find((item) => item.eventCount > 0) || concept?.providers[0] || null;
@@ -80,16 +63,16 @@ export function DataMap({
     if (selectedProvider && selectedProvider.provider !== provider) onProvider(selectedProvider.provider);
   }, [selectedProvider, provider, onProvider]);
 
+  const sampleEnabled = Boolean(concept && selectedProvider && selectedProvider.sampleCount > 0);
+  const sampleQuery = useQuery({
+    ...dataMapSampleQueryOptions(selectedProvider?.provider || "claude-code", concept?.id || "messages", sampleIndex),
+    enabled: sampleEnabled,
+  });
+  const sample = sampleQuery.data;
+
   useEffect(() => {
-    if (!concept || !selectedProvider || selectedProvider.sampleCount === 0) return;
-    const controller = new AbortController();
-    void fetchJson<DataMapSampleResponse>(`/api/data-map/sample?provider=${selectedProvider.provider}&concept=${concept.id}&index=${sampleIndex}`, controller.signal)
-      .then(setSample)
-      .catch((reason) => {
-        if (reason.name !== "AbortError" && sampleIndex !== 0) onSample(0);
-      });
-    return () => controller.abort();
-  }, [concept, selectedProvider, sampleIndex, onSample]);
+    if (sampleQuery.isError && sampleIndex !== 0) onSample(0);
+  }, [onSample, sampleIndex, sampleQuery.isError]);
 
   const chooseConcept = (value: DataConceptId) => {
     const next = data?.concepts.find((item) => item.id === value);
@@ -101,7 +84,7 @@ export function DataMap({
   };
 
   const visibleSample = sample?.provider === selectedProvider?.provider && sample?.concept === concept?.id && sample?.index === sampleIndex ? sample : null;
-  const sampleLoading = Boolean(concept && selectedProvider?.sampleCount && !visibleSample);
+  const sampleLoading = sampleEnabled && sampleQuery.isPending;
   const sampleValue = sampleTab === "native" ? visibleSample?.sample : visibleSample?.normalized;
   const sampleText = sampleValue == null ? "" : JSON.stringify(sampleValue, null, 2);
 
@@ -116,12 +99,12 @@ export function DataMap({
             const Icon = conceptIcons[item.id];
             return <button key={item.id} type="button" className={item.id === concept?.id ? "active" : ""} onClick={() => chooseConcept(item.id)}><Icon size={22} /><span><strong>{item.label}</strong><small>{compact(item.eventCount)} events</small></span></button>;
           })}
-          {loading && Array.from({ length: 7 }).map((_, index) => <span className="concept-skeleton" key={index} />)}
+          {dataQuery.isPending && Array.from({ length: 7 }).map((_, index) => <span className="concept-skeleton" key={index} />)}
         </nav>
       </aside>
 
       <section className="main-panel data-map-main">
-        {loading ? <div className="data-map-state"><RefreshCw className="spin" size={23} /><h1>Analysing indexed fields…</h1><p>The first visit may build lightweight summaries for existing sessions.</p></div> : error ? <div className="data-map-state"><AlertTriangle size={24} /><h1>Couldn’t load the data map</h1><p>{error}</p><button className="secondary-button" type="button" onClick={() => window.location.reload()}>Try again</button></div> : !concept ? <div className="data-map-state"><Info size={23} /><h1>No indexed concepts yet</h1><p>Scan this Mac or import files to populate the comparison.</p></div> : <>
+        {dataQuery.isPending ? <div className="data-map-state"><RefreshCw className="spin" size={23} /><h1>Analysing indexed fields…</h1><p>The first visit may build lightweight summaries for existing sessions.</p></div> : dataQuery.error ? <div className="data-map-state"><AlertTriangle size={24} /><h1>Couldn’t load the data map</h1><p>{dataQuery.error.message}</p><button className="secondary-button" type="button" onClick={() => void dataQuery.refetch()}>Try again</button></div> : !concept ? <div className="data-map-state"><Info size={23} /><h1>No indexed concepts yet</h1><p>Scan this Mac or import files to populate the comparison.</p></div> : <>
           <header className="data-map-heading"><h1>{concept.label}</h1><p>{concept.description}</p><div className="concept-metrics"><span><Database size={18} /><b>{concept.eventCount.toLocaleString()}</b><small>Indexed events</small></span><span><Gauge size={18} /><b>{concept.providerCount} of {concept.indexedProviderCount || 0} ({concept.providerCoverage}%)</b><small>Coverage across indexed providers</small></span></div></header>
           <div className="provider-comparison" role="table" aria-label={`${concept.label} by provider`}>
             <div className="provider-comparison-head" role="row"><span>Provider</span><span>Recorded / share</span><span>Indexed events</span><span>Provider-native record</span><span>Normalized fields extracted</span></div>

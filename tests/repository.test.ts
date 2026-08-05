@@ -81,6 +81,11 @@ describe("repository indexing", () => {
     const row = database.getDb().prepare("SELECT typeof(output_json) type FROM events WHERE kind='tool_result'").get() as { type: string };
     expect(row.type).toBe("blob");
     expect(repo.listEvents("session-1")[0].output).toEqual(large);
+    const summaryPage = repo.listEventPage({ sessionId: "session-1", limit: 1 });
+    expect(summaryPage.data).toHaveLength(1);
+    expect(summaryPage.data[0]).not.toHaveProperty("input");
+    expect(summaryPage.data[0]).not.toHaveProperty("output");
+    expect(summaryPage.nextOffset).toBe(1);
     expect(repo.searchEvents("first")).toHaveLength(1);
 
     await repo.saveParsedSession(session([

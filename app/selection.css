@@ -2,3 +2,94 @@
   border-color: var(--blue);
   box-shadow: inset 3px 0 0 var(--blue);
 }
+
+.workspace {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.timeline-window {
+  position: relative;
+  width: 100%;
+}
+
+.virtual-event-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.event-count {
+  margin-left: auto;
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.timeline-page-status {
+  position: sticky;
+  z-index: 4;
+  left: 50%;
+  display: block;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--white);
+  box-shadow: 0 3px 12px #14233c14;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.timeline-page-top { top: 8px; }
+.timeline-page-bottom { bottom: 8px; }
+
+.payload-state {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.payload-error { color: var(--red); }
+
+.payload-error button {
+  margin-left: 8px;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.event-payload > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.event-payload strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.event-payload a,
+.json-actions a {
+  margin-left: auto;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.inspector-content-state { margin-bottom: 16px; }
+
+.json-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.json-actions a {
+  display: inline-flex;
+  padding: 4px;
+}
