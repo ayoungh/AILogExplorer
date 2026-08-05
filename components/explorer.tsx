@@ -3,7 +3,9 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Archive, CheckCircle2, ChevronDown, FileJson2, FolderOpen, Import, Menu, MoreHorizontal, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { EventKind, JobRecord, NormalizedEvent, NormalizedSession, OverviewResponse, ProviderId } from "@/lib/types";
+import { DATA_CONCEPT_IDS, type DataConceptId, type EventKind, type JobRecord, type NormalizedEvent, type NormalizedSession, type OverviewResponse, type ProviderId } from "@/lib/types";
+import { AppModeSwitch } from "./app-mode-switch";
+import { DataMap } from "./data-map";
 import { EventCard } from "./event-card";
 import { EventInspector } from "./event-inspector";
 import { ProviderMark } from "./provider-mark";
@@ -37,8 +39,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function Explorer() {
-  const params = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+export function Explorer({ initialParams = "" }: { initialParams?: string }) {
+  const params = new URLSearchParams(initialParams);
+  const requestedConcept = params.get("concept") as DataConceptId;
+  const [mode, setMode] = useState<"logs" | "data-map">(params.get("mode") === "data-map" ? "data-map" : "logs");
+  const [conceptId, setConceptId] = useState<DataConceptId>(DATA_CONCEPT_IDS.includes(requestedConcept) ? requestedConcept : "messages");
+  const [sampleIndex, setSampleIndex] = useState(Math.max(0, Number(params.get("sample") || 0) || 0));
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [provider, setProvider] = useState<ProviderId | null>((params.get("provider") as ProviderId) || null);
   const [sessions, setSessions] = useState<NormalizedSession[]>([]);
@@ -74,14 +80,15 @@ export function Explorer() {
   useEffect(() => { void refreshOverview().catch((reason) => setError(reason.message)); }, [refreshOverview]);
 
   useEffect(() => {
-    if (!provider) return;
+    if (mode !== "logs" || !provider) return;
     void fetchJson<{ data: NormalizedSession[] }>(`/api/sessions?provider=${provider}&limit=250`).then(({ data }) => {
       setSessions(data);
       if (!sessionId || !data.some((item) => item.id === sessionId)) setSessionId(data[0]?.id || null);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load sessions"));
-  }, [provider, overview?.totalSessions, sessionId]);
+  }, [mode, provider, overview?.totalSessions, sessionId]);
 
   useEffect(() => {
+    if (mode !== "logs") return;
     if (!sessionId) { setSession(null); setEvents([]); return; }
     const group = filterGroups.find((item) => item.id === filter) || filterGroups[0];
     const kinds = group.kinds.map((kind) => `kind=${kind}`).join("&");
@@ -97,20 +104,22 @@ export function Explorer() {
       }
       setError(reason instanceof Error ? reason.message : "Could not load session events");
     });
-  }, [sessionId, filter, view, requestedEventId]);
+  }, [mode, sessionId, filter, view, requestedEventId]);
 
   const selectedEventId = selectedEvent?.id;
   useEffect(() => {
-    if (!selectedEventId) return;
+    if (mode !== "logs" || !selectedEventId) return;
     void fetchJson<NormalizedEvent>(`/api/events/${selectedEventId}`).then(setSelectedEvent).catch(() => undefined);
-  }, [selectedEventId]);
+  }, [mode, selectedEventId]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const values: Record<string, string | null> = { provider, session: sessionId, event: selectedEventId || null, filter, view, search: query.trim() || null };
+    const values: Record<string, string | null> = mode === "data-map"
+      ? { mode: "data-map", concept: conceptId, provider, sample: String(sampleIndex), session: null, event: null, filter: null, view: null, search: query.trim() || null }
+      : { mode: null, concept: null, sample: null, provider, session: sessionId, event: selectedEventId || null, filter, view, search: query.trim() || null };
     Object.entries(values).forEach(([key, value]) => value ? url.searchParams.set(key, value) : url.searchParams.delete(key));
     window.history.replaceState({}, "", url);
-  }, [provider, sessionId, selectedEventId, filter, view, query]);
+  }, [mode, conceptId, sampleIndex, provider, sessionId, selectedEventId, filter, view, query]);
 
   useEffect(() => {
     if (query.trim().length < 2) { setSearchResults([]); return; }
@@ -183,11 +192,19 @@ export function Explorer() {
   const chooseProvider = (value: ProviderId) => { setProvider(value); setSessionId(null); setSidebarOpen(false); };
   const chooseSession = (value: NormalizedSession) => { setSessionId(value.id); setSidebarOpen(false); };
   const chooseEvent = (value: NormalizedEvent) => { setSelectedEvent(value); setInspectorOpen(true); };
+  const chooseDataProvider = useCallback((value: ProviderId) => setProvider(value), []);
+  const chooseConcept = useCallback((value: DataConceptId) => setConceptId(value), []);
+  const chooseSample = useCallback((value: number) => setSampleIndex(value), []);
+  const switchMode = useCallback((value: "logs" | "data-map") => {
+    setMode(value);
+    setSidebarOpen(false);
+    setInspectorOpen(false);
+  }, []);
 
   return (
     <main className="app-frame">
       <header className="command-bar">
-        <button className="mobile-menu" type="button" aria-label="Open sources and sessions" onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
+        <button className="mobile-menu" type="button" aria-label={mode === "data-map" ? "Open data concepts" : "Open sources and sessions"} onClick={() => setSidebarOpen(true)}><Menu size={19} /></button>
         <div className="wordmark"><FileJson2 size={25} strokeWidth={1.7} /><span>AI Log Explorer</span></div>
         <div className="search-shell">
           <Search size={17} />
@@ -196,7 +213,7 @@ export function Explorer() {
           {searchResults.length > 0 && (
             <div className="search-results">
               {searchResults.slice(0, 10).map((result) => (
-                <button key={result.id} type="button" onClick={() => { if (result.provider) setProvider(result.provider); setSessionId(result.sessionId); setSelectedEvent(result); setQuery(""); setSearchResults([]); }}>
+                <button key={result.id} type="button" onClick={() => { setMode("logs"); if (result.provider) setProvider(result.provider); setSessionId(result.sessionId); setSelectedEvent(result); setInspectorOpen(true); setQuery(""); setSearchResults([]); }}>
                   <span>{result.toolName || result.kind.replaceAll("_", " ")}</span>
                   <small>
                     {(result.snippet || result.text || "")
@@ -222,9 +239,27 @@ export function Explorer() {
       )}
       {error && <div className="error-strip"><CircleError />{error}<button type="button" onClick={() => setError(null)}><X size={15} /></button></div>}
 
+      {mode === "data-map" ? (
+        <DataMap
+          conceptId={conceptId}
+          provider={provider}
+          sampleIndex={sampleIndex}
+          refreshKey={overview?.totalEvents || 0}
+          sidebarOpen={sidebarOpen}
+          inspectorOpen={inspectorOpen}
+          onMode={switchMode}
+          onConcept={chooseConcept}
+          onProvider={chooseDataProvider}
+          onSample={chooseSample}
+          onSidebarClose={() => setSidebarOpen(false)}
+          onInspectorOpen={() => setInspectorOpen(true)}
+          onInspectorClose={() => setInspectorOpen(false)}
+        />
+      ) : (
       <div className="workspace">
         <aside className={`left-panel ${sidebarOpen ? "drawer-open" : ""}`}>
           <button className="drawer-close" type="button" aria-label="Close navigation" onClick={() => setSidebarOpen(false)}><X size={18} /></button>
+          <AppModeSwitch mode="logs" onChange={switchMode} />
           <section className="source-section">
             <div className="section-title"><h2>Sources</h2><ChevronDown size={17} /></div>
             <nav aria-label="Log sources">
@@ -281,6 +316,7 @@ export function Explorer() {
 
         <div className={`inspector-wrap ${inspectorOpen ? "drawer-open" : ""}`}><EventInspector event={selectedEvent} relatedEvent={selectedEvent?.callId ? events.find((item) => item.id !== selectedEvent.id && item.callId === selectedEvent.callId) : null} source={overview?.providers.find((item) => item.id === session?.provider)?.label} tab={inspectorTab} onTab={setInspectorTab} onClose={() => setInspectorOpen(false)} onRelated={() => { const related = selectedEvent?.callId ? events.find((item) => item.id !== selectedEvent.id && item.callId === selectedEvent.callId) : null; if (related) chooseEvent(related); }} /></div>
       </div>
+      )}
 
       <footer className="status-bar">
         <span><CheckCircle2 size={15} />{overview?.totalSessions.toLocaleString() || 0} sessions indexed · Last scan {formatRelative(overview?.lastScanAt)}</span>
@@ -304,4 +340,3 @@ export function Explorer() {
 function CircleError() {
   return <span aria-hidden="true" className="error-dot">!</span>;
 }
-

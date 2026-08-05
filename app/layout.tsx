@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./selection.css";
+import "./data-map.css";
 
 export const metadata: Metadata = {
   title: "AI Log Explorer",
@@ -14,4 +15,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

@@ -91,6 +91,30 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS events_session_kind_idx ON events(session_id, kind, sequence);
     CREATE INDEX IF NOT EXISTS events_call_id_idx ON events(call_id);
 
+    CREATE TABLE IF NOT EXISTS session_event_stats (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      event_count INTEGER NOT NULL,
+      timestamp_count INTEGER NOT NULL DEFAULT 0,
+      role_count INTEGER NOT NULL DEFAULT 0,
+      turn_id_count INTEGER NOT NULL DEFAULT 0,
+      call_id_count INTEGER NOT NULL DEFAULT 0,
+      parent_id_count INTEGER NOT NULL DEFAULT 0,
+      tool_name_count INTEGER NOT NULL DEFAULT 0,
+      text_count INTEGER NOT NULL DEFAULT 0,
+      input_count INTEGER NOT NULL DEFAULT 0,
+      output_count INTEGER NOT NULL DEFAULT 0,
+      status_count INTEGER NOT NULL DEFAULT 0,
+      duration_ms_count INTEGER NOT NULL DEFAULT 0,
+      input_tokens_count INTEGER NOT NULL DEFAULT 0,
+      output_tokens_count INTEGER NOT NULL DEFAULT 0,
+      total_tokens_count INTEGER NOT NULL DEFAULT 0,
+      sample_event_id TEXT REFERENCES events(id) ON DELETE SET NULL,
+      PRIMARY KEY (session_id, kind)
+    );
+
+    CREATE INDEX IF NOT EXISTS session_event_stats_kind_idx ON session_event_stats(kind, session_id);
+
     CREATE VIRTUAL TABLE IF NOT EXISTS event_fts USING fts5(
       event_id UNINDEXED,
       session_id UNINDEXED,
@@ -157,6 +181,7 @@ export function resetDb() {
   const db = getDb();
   db.exec(`
     DELETE FROM event_fts;
+    DELETE FROM session_event_stats;
     DELETE FROM events;
     DELETE FROM sessions;
     DELETE FROM source_files;
@@ -167,5 +192,4 @@ export function resetDb() {
   db.pragma("wal_checkpoint(TRUNCATE)");
   db.exec("VACUUM");
 }
-
 

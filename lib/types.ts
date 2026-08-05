@@ -25,6 +25,73 @@ export const EVENT_KINDS = [
 
 export type EventKind = (typeof EVENT_KINDS)[number];
 
+export const DATA_CONCEPT_IDS = [
+  "messages",
+  "reasoning",
+  "tool-calls",
+  "tool-results",
+  "usage-tokens",
+  "errors",
+  "attachments",
+  "system-context",
+  "metadata-unknown",
+] as const;
+
+export type DataConceptId = (typeof DATA_CONCEPT_IDS)[number];
+
+export const DATA_MAP_FIELD_IDS = [
+  "timestamp", "role", "turnId", "callId", "parentId", "toolName", "text",
+  "input", "output", "status", "durationMs", "inputTokens", "outputTokens", "totalTokens",
+] as const;
+
+export type DataMapFieldId = (typeof DATA_MAP_FIELD_IDS)[number];
+
+export type NativeFieldMapping = {
+  field: DataMapFieldId;
+  sourcePaths: string[];
+  type: "string" | "number" | "object" | "array" | "mixed";
+};
+
+export type ProviderConceptSummary = {
+  provider: ProviderId;
+  label: string;
+  status: "recorded" | "not-observed" | "unsupported" | "export-required";
+  eventCount: number;
+  providerEventShare: number;
+  nativeRecords: string[];
+  fieldMappings: NativeFieldMapping[];
+  fieldCoverage: Partial<Record<DataMapFieldId, number>>;
+  sampleCount: number;
+};
+
+export type DataConceptSummary = {
+  id: DataConceptId;
+  label: string;
+  description: string;
+  eventCount: number;
+  providerCount: number;
+  indexedProviderCount: number;
+  providerCoverage: number;
+  providers: ProviderConceptSummary[];
+};
+
+export type DataMapResponse = {
+  concepts: DataConceptSummary[];
+  totalEvents: number;
+  totalSessions: number;
+};
+
+export type DataMapSampleResponse = {
+  provider: ProviderId;
+  concept: DataConceptId;
+  index: number;
+  total: number;
+  kind: EventKind;
+  normalized: Partial<Record<DataMapFieldId, unknown>>;
+  sample: unknown;
+  truncated: boolean;
+};
+
 export type ProviderSummary = {
   id: ProviderId;
   label: string;
@@ -123,5 +190,4 @@ export interface SourceAdapter {
   detect(path: string): Promise<boolean>;
   parse(path: string): AsyncGenerator<ParsedSession | ImportDiagnostic>;
 }
-
 

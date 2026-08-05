@@ -32,6 +32,7 @@ export async function saveParsedSession(session: ParsedSession) {
   `);
   const deleteEvents = db.prepare("DELETE FROM events WHERE session_id = ?");
   const deleteFts = db.prepare("DELETE FROM event_fts WHERE session_id = ?");
+  const deleteStats = db.prepare("DELETE FROM session_event_stats WHERE session_id = ?");
   const insertEvent = db.prepare(`
     INSERT INTO events (
       id, session_id, sequence, timestamp, kind, role, turn_id, call_id, parent_id,
@@ -44,6 +45,17 @@ export async function saveParsedSession(session: ParsedSession) {
     )
   `);
   const insertFts = db.prepare("INSERT INTO event_fts (event_id, session_id, provider, content) VALUES (?, ?, ?, ?)");
+  const insertStats = db.prepare(`
+    INSERT INTO session_event_stats (
+      session_id, kind, event_count, timestamp_count, role_count, turn_id_count, call_id_count,
+      parent_id_count, tool_name_count, text_count, input_count, output_count, status_count,
+      duration_ms_count, input_tokens_count, output_tokens_count, total_tokens_count, sample_event_id
+    ) VALUES (
+      @sessionId, @kind, @eventCount, @timestampCount, @roleCount, @turnIdCount, @callIdCount,
+      @parentIdCount, @toolNameCount, @textCount, @inputCount, @outputCount, @statusCount,
+      @durationMsCount, @inputTokensCount, @outputTokensCount, @totalTokensCount, @sampleEventId
+    )
+  `);
   const collapsed: Array<{ event: ParsedSession["events"][number]; rawRecords: unknown[] }> = [];
   const canonical = new Map<string, number>();
 
@@ -63,6 +75,7 @@ export async function saveParsedSession(session: ParsedSession) {
   db.exec("BEGIN IMMEDIATE");
   try {
     deleteFts.run(session.id);
+    deleteStats.run(session.id);
     deleteEvents.run(session.id);
     insertSession.run({
       ...session,
@@ -72,6 +85,13 @@ export async function saveParsedSession(session: ParsedSession) {
     });
 
     const indexedPayloads = new Set<string>();
+    const stats = new Map<EventKind, {
+      sessionId: string; kind: EventKind; eventCount: number; timestampCount: number; roleCount: number;
+      turnIdCount: number; callIdCount: number; parentIdCount: number; toolNameCount: number;
+      textCount: number; inputCount: number; outputCount: number; statusCount: number;
+      durationMsCount: number; inputTokensCount: number; outputTokensCount: number;
+      totalTokensCount: number; sampleEventId: string;
+    }>();
     const compressionBatchSize = 32;
     for (let batchStart = 0; batchStart < collapsed.length; batchStart += compressionBatchSize) {
       const batch = collapsed.slice(batchStart, batchStart + compressionBatchSize);
@@ -116,6 +136,28 @@ export async function saveParsedSession(session: ParsedSession) {
           rawBytes: raw.bytes,
           rawRecordCount: rawRecords.length,
         });
+        const stat = stats.get(event.kind) || {
+          sessionId: session.id, kind: event.kind, eventCount: 0, timestampCount: 0, roleCount: 0,
+          turnIdCount: 0, callIdCount: 0, parentIdCount: 0, toolNameCount: 0, textCount: 0,
+          inputCount: 0, outputCount: 0, statusCount: 0, durationMsCount: 0, inputTokensCount: 0,
+          outputTokensCount: 0, totalTokensCount: 0, sampleEventId: id,
+        };
+        stat.eventCount += 1;
+        stat.timestampCount += event.timestamp == null ? 0 : 1;
+        stat.roleCount += event.role == null ? 0 : 1;
+        stat.turnIdCount += event.turnId == null ? 0 : 1;
+        stat.callIdCount += event.callId == null ? 0 : 1;
+        stat.parentIdCount += event.parentId == null ? 0 : 1;
+        stat.toolNameCount += event.toolName == null ? 0 : 1;
+        stat.textCount += event.text == null ? 0 : 1;
+        stat.inputCount += event.input == null ? 0 : 1;
+        stat.outputCount += event.output == null ? 0 : 1;
+        stat.statusCount += event.status == null ? 0 : 1;
+        stat.durationMsCount += event.durationMs == null ? 0 : 1;
+        stat.inputTokensCount += event.inputTokens == null ? 0 : 1;
+        stat.outputTokensCount += event.outputTokens == null ? 0 : 1;
+        stat.totalTokensCount += event.totalTokens == null ? 0 : 1;
+        stats.set(event.kind, stat);
         const searchParts = [...new Set([session.title, session.projectPath, event.text, event.toolName, json(event.input), json(event.output), event.searchableText]
           .filter((value): value is string => Boolean(value)))]
           .join("\n")
@@ -128,6 +170,7 @@ export async function saveParsedSession(session: ParsedSession) {
       }
       await new Promise((resolve) => setImmediate(resolve));
     }
+    for (const stat of stats.values()) insertStats.run(stat);
     db.exec("COMMIT");
   } catch (error) {
     if (db.inTransaction) db.exec("ROLLBACK");
@@ -248,5 +291,4 @@ export function mapJob(row: Record<string, unknown>): JobRecord {
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   };
 }
-
 
