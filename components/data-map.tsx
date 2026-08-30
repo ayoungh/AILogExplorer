@@ -5,7 +5,7 @@ import { AlertTriangle, Brain, Check, ChevronLeft, ChevronRight, CircleHelp, Cop
 import { useEffect, useMemo, useState } from "react";
 import { dataMapQueryOptions, dataMapSampleQueryOptions } from "@/lib/client/api";
 import type { DataConceptId, ProviderId } from "@/lib/types";
-import { AppModeSwitch } from "./app-mode-switch";
+import { AppModeSwitch, type AppMode } from "./app-mode-switch";
 import { ProviderMark } from "./provider-mark";
 
 const conceptIcons: Record<DataConceptId, typeof MessageCircle> = {
@@ -43,7 +43,7 @@ export function DataMap({
   sampleIndex: number;
   sidebarOpen: boolean;
   inspectorOpen: boolean;
-  onMode: (mode: "logs" | "data-map") => void;
+  onMode: (mode: AppMode) => void;
   onConcept: (value: DataConceptId) => void;
   onProvider: (value: ProviderId) => void;
   onSample: (value: number) => void;

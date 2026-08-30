@@ -1,0 +1,143 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.14.0
+          run_install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify approved version
+        run: |
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          ACTUAL_VERSION="$(node -p "require('./package.json').version")"
+          test "$ACTUAL_VERSION" = "$EXPECTED_VERSION"
+
+      - name: Verify source and build package
+        run: |
+          pnpm verify
+          pnpm package:pack
+
+      - name: Record tarball
+        id: tarball
+        run: |
+          TARBALL="$(find dist/packages -maxdepth 1 -name 'ai-log-explorer-*.tgz' -print -quit)"
+          test -n "$TARBALL"
+          echo "path=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: ${{ steps.tarball.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+          path: package-artifact
+
+      - name: Install and run the packed CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/npm-prefix"
+          TEST_HOME="$RUNNER_TEMP/test-home"
+          TARBALL="$(find package-artifact -name 'ai-log-explorer-*.tgz' -print -quit)"
+          mkdir -p "$PREFIX" "$TEST_HOME"
+          npm install --global --prefix "$PREFIX" "$TARBALL"
+          CLI="$PREFIX/bin/ai-log-explorer"
+          "$CLI" --version
+          "$CLI" --help
+          HOME="$TEST_HOME" "$CLI" --no-open --port 3217 >"$RUNNER_TEMP/ai-log-explorer.log" 2>&1 &
+          CLI_PID=$!
+          trap 'kill -TERM "$CLI_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..80}; do
+            if curl --fail --silent http://127.0.0.1:3217/api/health >"$RUNNER_TEMP/health.json"; then break; fi
+            sleep 0.25
+          done
+          node -e "const h=require(process.argv[1]); if(h.status!=='ok') process.exit(1)" "$RUNNER_TEMP/health.json"
+          curl --fail --silent http://127.0.0.1:3217/ >/dev/null
+          test -f "$TEST_HOME/Library/Application Support/AI Log Explorer/ailogexplorer.sqlite"
+          lsof -nP -iTCP:3217 -sTCP:LISTEN | grep '127.0.0.1:3217'
+          kill -INT "$CLI_PID"
+          wait "$CLI_PID" || true
+          trap - EXIT
+          test -z "$(find "$PREFIX/lib/node_modules/ai-log-explorer/dist/app" -name '*.node' -print -quit)"
+
+  publish:
+    needs: [pack, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Use an npm CLI that supports trusted publishing
+        run: npm install --global npm@latest
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-package
+          path: package-artifact
+
+      - name: Publish the tested tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$(find package-artifact -name 'ai-log-explorer-*.tgz' -print -quit)"
+          test -n "$TARBALL"
+          EXPECTED_VERSION="${GITHUB_REF_NAME#v}"
+          TARBALL_VERSION="$(tar -xOf "$TARBALL" package/package.json | node -e "let value='';process.stdin.on('data',c=>value+=c).on('end',()=>process.stdout.write(JSON.parse(value).version))")"
+          test "$TARBALL_VERSION" = "$EXPECTED_VERSION"
+          if npm view "ai-log-explorer@$EXPECTED_VERSION" version >/dev/null 2>&1; then
+            echo "ai-log-explorer@$EXPECTED_VERSION is already published" >&2
+            exit 1
+          fi
+          npm publish "$TARBALL" --access public --provenance

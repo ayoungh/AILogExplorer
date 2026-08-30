@@ -35,7 +35,9 @@ material on your Mac:
 
 - The server binds to `127.0.0.1` and rejects non-loopback requests.
 - Source histories are opened read-only.
-- The generated search index stays in `.data/ailogexplorer.sqlite`.
+- Installed copies keep the generated search index in
+  `~/Library/Application Support/AI Log Explorer/ailogexplorer.sqlite`.
+  Repository development keeps it in `.data/ailogexplorer.sqlite`.
 - `.data`, log exports, databases, private screenshots, and generated files
   are excluded from Git. The two reviewed app screenshots above are the only
   screenshot exceptions.
@@ -44,8 +46,8 @@ material on your Mac:
 
 The local index contains normalized events, searchable text, source paths, and
 compressed raw records. Treat it as private. Use **Clear local index** in the
-app to remove indexed data, or delete the `.data` directory while the app is
-stopped.
+app to remove indexed data. Removing the npm package does not remove this
+private index.
 
 ### Provider storage and encryption
 
@@ -92,21 +94,41 @@ conversation data.
 > deploy it as a public or remotely accessible web service. Open source code is
 > not the same as a safe public deployment.
 
-## Requirements
+## Install and run
 
 - macOS
 - Node.js 24
-- pnpm 10
 
-If you use `nvm`, the repository includes the expected Node version:
+Run without installing globally:
+
+```bash
+npx ai-log-explorer
+```
+
+Or install the command:
+
+```bash
+npm install --global ai-log-explorer
+ai-log-explorer
+```
+
+The command starts a foreground server bound only to `127.0.0.1`, waits for it
+to become ready, and opens the browser. Press Ctrl+C to stop it. Use
+`ai-log-explorer --no-open` to suppress the browser or `--port <port>` to
+choose an explicit port. Without `--port`, it uses the first available port
+from 3000 through 3010.
+
+The npm package supports Apple Silicon and Intel Macs. It installs
+`better-sqlite3` for the current architecture; if a prebuilt binary is not
+available, npm may require the Xcode Command Line Tools to compile it.
+
+## Run from source
+
+Repository development additionally requires pnpm 10. If you use `nvm`, the
+repository includes the expected Node version.
 
 ```bash
 nvm use
-```
-
-## Run
-
-```bash
 pnpm install
 pnpm dev
 ```
@@ -138,6 +160,18 @@ pnpm build
 pnpm start
 ```
 
+To inspect the exact npm package without publishing it:
+
+```bash
+pnpm build
+pnpm package:pack
+```
+
+The generated tarball is written beneath `dist/packages/`, which is excluded
+from source control. Packaging rejects source histories, databases, native
+binaries, source maps, credentials, personal home paths, and files outside the
+published CLI/runtime allowlist.
+
 The production server also binds to loopback.
 
 ## Verification
@@ -157,6 +191,8 @@ pnpm typecheck
 pnpm lint
 pnpm test
 pnpm build
+pnpm package:stage
+pnpm package:check
 ```
 
 `check:public` examines tracked files and untracked files that are not ignored.

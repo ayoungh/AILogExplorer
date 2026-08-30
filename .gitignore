@@ -3,6 +3,7 @@
 /.next/
 /.pnpm-store/
 /coverage/
+/dist/
 *.log
 *.tsbuildinfo
 

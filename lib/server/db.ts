@@ -12,15 +12,21 @@ function databasePath() {
 }
 
 function migrate(db: Database.Database) {
+  db.pragma("busy_timeout = 30000");
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA synchronous = NORMAL;
     PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
+    PRAGMA busy_timeout = 30000;
     PRAGMA cache_size = -131072;
     PRAGMA temp_store = MEMORY;
     PRAGMA mmap_size = 1073741824;
     PRAGMA wal_autocheckpoint = 10000;
+
+    CREATE TABLE IF NOT EXISTS schema_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS sources (
       id TEXT PRIMARY KEY,
@@ -115,6 +121,59 @@ function migrate(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS session_event_stats_kind_idx ON session_event_stats(kind, session_id);
 
+    CREATE TABLE IF NOT EXISTS session_metrics (
+      session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+      observed_started_at TEXT,
+      observed_ended_at TEXT,
+      duration_ms REAL,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      user_message_count INTEGER NOT NULL DEFAULT 0,
+      assistant_message_count INTEGER NOT NULL DEFAULT 0,
+      tool_call_count INTEGER NOT NULL DEFAULT 0,
+      tool_result_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      total_tokens INTEGER,
+      token_recorded INTEGER NOT NULL DEFAULT 0,
+      token_timestamp TEXT,
+      timestamped_event_count INTEGER NOT NULL DEFAULT 0,
+      event_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS session_activity (
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      bucket_start_utc TEXT NOT NULL,
+      event_count INTEGER NOT NULL DEFAULT 0,
+      tool_call_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, bucket_start_utc)
+    );
+
+    CREATE TABLE IF NOT EXISTS file_references (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      action TEXT NOT NULL,
+      source TEXT NOT NULL,
+      timestamp TEXT,
+      UNIQUE(event_id, path, action)
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS sessions_project_updated_idx ON sessions(project_path, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS sessions_model_updated_idx ON sessions(model, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS events_timestamp_kind_idx ON events(timestamp, kind);
+    CREATE INDEX IF NOT EXISTS session_activity_bucket_idx ON session_activity(bucket_start_utc, session_id);
+    CREATE INDEX IF NOT EXISTS file_references_recent_idx ON file_references(timestamp DESC, session_id);
+    CREATE INDEX IF NOT EXISTS file_references_path_idx ON file_references(path, session_id);
+
     CREATE VIRTUAL TABLE IF NOT EXISTS event_fts USING fts5(
       event_id UNINDEXED,
       session_id UNINDEXED,
@@ -166,7 +225,7 @@ export function getDb() {
   if (!global.__aiLogDatabase) {
     const dbPath = databasePath();
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    global.__aiLogDatabase = new Database(dbPath);
+    global.__aiLogDatabase = new Database(dbPath, { timeout: 30_000 });
     migrate(global.__aiLogDatabase);
   }
   return global.__aiLogDatabase;
@@ -181,6 +240,9 @@ export function resetDb() {
   const db = getDb();
   db.exec(`
     DELETE FROM event_fts;
+    DELETE FROM file_references;
+    DELETE FROM session_activity;
+    DELETE FROM session_metrics;
     DELETE FROM session_event_stats;
     DELETE FROM events;
     DELETE FROM sessions;
@@ -192,4 +254,3 @@ export function resetDb() {
   db.pragma("wal_checkpoint(TRUNCATE)");
   db.exec("VACUUM");
 }
-

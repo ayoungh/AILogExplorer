@@ -7,6 +7,7 @@ import path from "node:path";
 import type { ImportDiagnostic, JobRecord, ParsedSession, ProviderId, SourceAdapter } from "@/lib/types";
 import { claudeCodeAdapter, claudeDesktopAdapter, codexAdapter, cursorAdapter, detectAdapter } from "@/lib/adapters";
 import { getDb } from "./db";
+import { configureLiveInfrastructure, emitLiveEvent, getLiveSettings, notifyJobSettled } from "./live";
 import { mapJob, saveParsedSession } from "./repository";
 
 type SourceFile = { path: string; adapter: SourceAdapter; provider: ProviderId; displayPath?: string; temporary?: boolean };
@@ -56,6 +57,17 @@ export async function discoverKnownSources() {
   return result;
 }
 
+export function knownProviderRoots() {
+  const home = os.homedir();
+  return [
+    path.join(home, ".claude", "projects"),
+    path.join(home, ".codex", "sessions"),
+    path.join(home, ".codex", "archived_sessions"),
+    path.join(home, "Library", "Application Support", "Claude", "local-agent-mode-sessions"),
+    path.join(home, "Library", "Application Support", "Cursor", "User", "globalStorage"),
+  ];
+}
+
 async function fingerprint(filePath: string) {
   const hash = createHash("sha256");
   await new Promise<void>((resolve, reject) => {
@@ -72,6 +84,8 @@ function createJob(kind: JobRecord["kind"]) {
   const id = randomUUID();
   const now = new Date().toISOString();
   db.prepare("INSERT INTO jobs (id,kind,status,created_at,updated_at) VALUES (?,?, 'queued',?,?)").run(id, kind, now, now);
+  const row = db.prepare("SELECT * FROM jobs WHERE id=?").get(id) as Record<string, unknown>;
+  emitLiveEvent("job-updated", mapJob(row));
   return id;
 }
 
@@ -80,6 +94,14 @@ function updateJob(id: string, values: Record<string, unknown>) {
   const names = Object.keys(values);
   db.prepare(`UPDATE jobs SET ${names.map((name) => `${name}=@${name}`).join(",")}, updated_at=@updated_at WHERE id=@id`)
     .run({ ...values, id, updated_at: new Date().toISOString() });
+  const row = db.prepare("SELECT * FROM jobs WHERE id=?").get(id) as Record<string, unknown> | undefined;
+  if (row) emitLiveEvent("job-updated", mapJob(row));
+  const status = values.status;
+  if (status === "completed") {
+    emitLiveEvent("index-updated", { jobId: id, kind: row?.kind, updatedAt: row?.updated_at });
+    emitLiveEvent("settings-updated", getLiveSettings());
+  }
+  if (["completed", "failed", "cancelled"].includes(String(status || ""))) notifyJobSettled();
 }
 
 function diagnostic(jobId: string, value: ImportDiagnostic) {
@@ -128,7 +150,11 @@ async function runFiles(jobId: string, sources: SourceFile[], signal: AbortSigna
         for await (const value of source.adapter.parse(source.path)) {
           if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
           if (isDiagnostic(value)) diagnostic(jobId, value);
-          else { await saveParsedSession({ ...value, sourcePath: recordPath }); fileEvents += value.events.length; }
+          else {
+            await saveParsedSession({ ...value, sourcePath: recordPath });
+            fileEvents += value.events.length;
+            emitLiveEvent("session-updated", { sessionId: value.id, provider: value.provider, sourcePath: recordPath, eventCount: value.events.length, updatedAt: value.updatedAt });
+          }
           if (fileEvents % 1000 === 0) await new Promise((resolve) => setImmediate(resolve));
         }
         db.prepare(`INSERT INTO source_files (path,provider,size,mtime_ms,fingerprint,available,last_indexed_at,error)
@@ -217,3 +243,9 @@ export function cancelJob(id: string) {
   updateJob(id, { cancel_requested: 1, message: "Cancelling…" });
   return getJob(id);
 }
+
+configureLiveInfrastructure({
+  roots: knownProviderRoots,
+  startScan: () => startScan(),
+  hasActiveJob: () => Boolean(getDb().prepare("SELECT 1 FROM jobs WHERE status IN ('queued','running') LIMIT 1").get()),
+});

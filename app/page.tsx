@@ -29,7 +29,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const provider = PROVIDER_IDS.includes(requestedProvider as ProviderId)
     ? requestedProvider as ProviderId
     : overviewResponse.providers.find((item) => item.sessionCount > 0)?.id || overviewResponse.providers[0]?.id || "claude-code";
-  const logsMode = params.get("mode") !== "data-map";
+  const logsMode = !["data-map", "overview"].includes(params.get("mode") || "");
   const sessionData = logsMode ? listSessions({ provider, limit: 250 }) : [];
   if (logsMode) queryClient.setQueryData(queryKeys.sessions(provider), { data: sessionData });
 
@@ -63,7 +63,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <Explorer initialParams={params.toString()} initialProvider={provider} initialSessionId={sessionId} />
+      <Explorer initialParams={params.toString()} initialProvider={provider} initialSessionId={sessionId} indexLocation={process.env.AILOG_DB_PATH ? "~/Library/Application Support/AI Log Explorer/ailogexplorer.sqlite" : ".data/ailogexplorer.sqlite"} />
     </HydrationBoundary>
   );
 }

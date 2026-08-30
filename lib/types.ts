@@ -210,6 +210,139 @@ export type OverviewResponse = {
   encryptedChatGptCache: boolean;
 };
 
+export type SessionMetrics = {
+  sessionId: string;
+  observedStartedAt: string | null;
+  observedEndedAt: string | null;
+  durationMs: number | null;
+  messageCount: number;
+  userMessageCount: number;
+  assistantMessageCount: number;
+  toolCallCount: number;
+  toolResultCount: number;
+  errorCount: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  tokenRecorded: boolean;
+  tokenTimestamp: string | null;
+  timestampedEventCount: number;
+  eventCount: number;
+};
+
+export type SearchSort = "relevance" | "recent" | "sequence";
+
+export type SearchFacetValue = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type SearchFacets = {
+  providers: SearchFacetValue[];
+  projects: SearchFacetValue[];
+  models: SearchFacetValue[];
+  kinds: SearchFacetValue[];
+};
+
+export type SearchResult = EventSummary & {
+  provider: ProviderId;
+  sessionTitle: string;
+  projectPath: string | null;
+  model: string | null;
+  sessionStartedAt: string | null;
+  sessionUpdatedAt: string | null;
+  snippet: string;
+};
+
+export type SearchResponse = {
+  data: SearchResult[];
+  total: number;
+  nextOffset: number | null;
+  facets: SearchFacets;
+};
+
+export type AnalyticsBreakdown = {
+  value: string;
+  label: string;
+  sessionCount: number;
+  eventCount: number;
+  toolCallCount: number;
+  errorCount: number;
+  totalTokens: number | null;
+  tokenSessionCount: number;
+};
+
+export type AnalyticsActivityBucket = {
+  bucketStart: string;
+  eventCount: number;
+  toolCallCount: number;
+  errorCount: number;
+};
+
+export type AnalyticsTokenBucket = {
+  bucketStart: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  sessionCount: number;
+};
+
+export type AnalyticsTopSession = {
+  session: NormalizedSession;
+  metrics: SessionMetrics;
+};
+
+export type AnalyticsResponse = {
+  range: { from: string; to: string; timezone: string };
+  totals: {
+    sessionCount: number;
+    eventCount: number;
+    messageCount: number;
+    toolCallCount: number;
+    errorCount: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+    tokenSessionCount: number;
+    timestampedEventCount: number;
+  };
+  activity: AnalyticsActivityBucket[];
+  tokens: AnalyticsTokenBucket[];
+  providers: AnalyticsBreakdown[];
+  projects: AnalyticsBreakdown[];
+  models: AnalyticsBreakdown[];
+  tools: Array<{ name: string; count: number }>;
+  topSessions: AnalyticsTopSession[];
+};
+
+export type FileReferenceAction = "read" | "write" | "create" | "delete" | "unknown";
+
+export type FileReference = {
+  id: string;
+  eventId: string;
+  sessionId: string;
+  provider: ProviderId;
+  sessionTitle: string;
+  projectPath: string | null;
+  path: string;
+  action: FileReferenceAction;
+  source: "structured" | "patch";
+  timestamp: string | null;
+};
+
+export type RecentFileGroup = {
+  path: string;
+  projectPath: string | null;
+  latestAt: string | null;
+  references: FileReference[];
+};
+
+export type RecentFilesResponse = {
+  data: RecentFileGroup[];
+  nextOffset: number | null;
+};
+
 export interface SourceAdapter {
   id: ProviderId;
   label: string;

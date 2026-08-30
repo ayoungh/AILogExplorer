@@ -1,18 +1,46 @@
 {
   "name": "ai-log-explorer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Explore local AI conversation and agent logs without uploading them.",
-  "private": true,
   "license": "MIT",
+  "homepage": "https://github.com/ayoungh/AILogExplorer#readme",
+  "bugs": {
+    "url": "https://github.com/ayoungh/AILogExplorer/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ayoungh/AILogExplorer.git"
+    "url": "https://github.com/ayoungh/AILogExplorer.git"
   },
+  "keywords": [
+    "ai",
+    "logs",
+    "codex",
+    "claude",
+    "cursor",
+    "local-first"
+  ],
+  "bin": {
+    "ai-log-explorer": "bin/ai-log-explorer.mjs"
+  },
+  "files": [
+    "bin/",
+    "dist/app/"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
   "engines": {
-    "node": "24.x",
-    "pnpm": "10.x"
+    "node": "24.x"
   },
   "packageManager": "pnpm@10.14.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "dev": "next dev --webpack --hostname localhost --port 3000",
     "build": "next build",
@@ -20,6 +48,9 @@
     "examples:generate": "node scripts/generate-examples.mjs",
     "examples:check": "node scripts/generate-examples.mjs --check",
     "check:public": "node scripts/check-public-tree.mjs",
+    "package:stage": "node scripts/stage-package.mjs",
+    "package:check": "node scripts/check-package.mjs",
+    "package:pack": "npm run package:stage && npm run package:check && node scripts/pack-package.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -30,7 +61,7 @@
     "@tanstack/react-virtual": "^3.14.8",
     "better-sqlite3": "^12.2.0",
     "lucide-react": "^0.468.0",
-    "next": "16.2.11",
+    "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
@@ -43,13 +74,14 @@
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "eslint": "^9.33.0",
-    "eslint-config-next": "16.2.11",
+    "eslint-config-next": "16.3.3",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.9.2",
     "vitest": "^4.0.0"
   },
   "pnpm": {
     "overrides": {
+      "nanoid": "3.3.18",
       "postcss": "8.5.23",
       "sharp": "0.35.3"
     },

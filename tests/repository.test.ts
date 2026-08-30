@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { detectAdapter } from "@/lib/adapters";
+import { event } from "@/lib/adapters/utils";
 import type { ImportDiagnostic } from "@/lib/types";
 import type { ParsedSession } from "@/lib/types";
 
@@ -124,5 +125,44 @@ describe("repository indexing", () => {
     }
 
     expect(repo.overview().totalSessions).toBe(4);
+  });
+
+  it("derives cumulative Codex metrics, UTC activity, observed files, and complete duplicate-text search", async () => {
+    const { database, repository: repo } = await repository();
+    await repo.saveParsedSession(session([
+      event({ sequence: 0, timestamp: "2026-01-01T00:00:00Z", kind: "user_message", text: "repeatable needle", raw: {} }),
+      event({ sequence: 1, timestamp: "2026-01-01T00:00:01Z", kind: "assistant_message", text: "repeatable needle", raw: {} }),
+      event({ sequence: 2, timestamp: "2026-01-01T00:00:02Z", kind: "tool_call", toolName: "read_file", input: { path: "src/read.ts" }, raw: {} }),
+      event({ sequence: 3, timestamp: "2026-01-01T00:00:03Z", kind: "tool_call", toolName: "apply_patch", input: { patch: "*** Add File: src/new.ts\n+example" }, raw: {} }),
+      event({ sequence: 4, timestamp: "2026-01-01T00:00:04Z", kind: "error", status: "failed", raw: {} }),
+      event({ sequence: 5, timestamp: "2026-01-01T00:00:05Z", kind: "usage", inputTokens: 10, outputTokens: 2, totalTokens: 12, raw: {} }),
+      event({ sequence: 6, timestamp: "2026-01-01T00:00:06Z", kind: "usage", inputTokens: 20, outputTokens: 5, totalTokens: 25, raw: {} }),
+    ]));
+
+    const metrics = repo.getSessionMetrics("session-1");
+    expect(metrics).toMatchObject({ messageCount: 2, toolCallCount: 2, errorCount: 1, inputTokens: 20, outputTokens: 5, totalTokens: 25, tokenRecorded: true, eventCount: 7, timestampedEventCount: 7 });
+    expect(metrics?.durationMs).toBe(6_000);
+    expect(repo.searchEvents({ query: "repeatable needle", sessionId: "session-1", sort: "sequence" }).data).toHaveLength(2);
+    const observed = repo.recentFiles();
+    expect(observed.data.flatMap((group) => group.references).map((reference) => [reference.path, reference.action])).toEqual(expect.arrayContaining([
+      ["/tmp/project/src/read.ts", "read"],
+      ["/tmp/project/src/new.ts", "create"],
+    ]));
+    const report = repo.analytics({ from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z", timezone: "UTC" });
+    expect(report.totals).toMatchObject({ sessionCount: 1, eventCount: 7, totalTokens: 25, tokenSessionCount: 1 });
+    expect(report.activity).toEqual([{ bucketStart: "2026-01-01", eventCount: 7, toolCallCount: 2, errorCount: 1 }]);
+
+    const missingEventId = repo.searchEvents("repeatable")[0].id;
+    database.getDb().prepare("DELETE FROM schema_meta WHERE key='derived_schema_version'").run();
+    database.getDb().prepare("DELETE FROM event_fts WHERE event_id=?").run(missingEventId);
+    repo.ensureDerivedData();
+    expect(repo.searchEvents("repeatable")).toHaveLength(2);
+  });
+
+  it("does not claim token coverage for providers without defined cumulative semantics", async () => {
+    const { repository: repo } = await repository();
+    const value = session([event({ sequence: 0, timestamp: "2026-01-01T00:00:00Z", kind: "usage", inputTokens: 4, outputTokens: 1, totalTokens: 5, raw: {} })]);
+    await repo.saveParsedSession({ ...value, provider: "claude-code" });
+    expect(repo.getSessionMetrics(value.id)).toMatchObject({ tokenRecorded: false, inputTokens: null, outputTokens: null, totalTokens: null });
   });
 });

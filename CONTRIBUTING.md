@@ -51,7 +51,33 @@ pnpm verify
 ```
 
 This checks the candidate public tree, audits production dependencies, runs
-type checking and linting, executes the test suite, and creates a production
-build.
+type checking and linting, executes the test suite, creates a production
+build, and validates the staged npm runtime and package manifest.
 
 Keep changes focused and add or update tests when behavior changes.
+
+## npm package verification
+
+The public npm package contains only the foreground CLI, README, license, and a
+staged production Next.js build. It deliberately does not contain source
+histories, examples, screenshots, tests, development configuration, or native
+SQLite binaries. `better-sqlite3` remains a normal dependency so npm installs
+the correct binary for each Mac.
+
+Before proposing a package release, run:
+
+```bash
+pnpm build
+pnpm package:pack
+```
+
+The staging and package checks remove development-only Next.js output, sanitize
+build-root metadata, inspect every staged file, and verify the `npm pack`
+manifest against a strict allowlist. Never bypass these checks or publish a
+tarball produced from an unreviewed working tree.
+
+Publishing is intentionally separate from packaging. Do not publish, tag, or
+create a release from a development task. The protected GitHub workflow tests
+the same tarball on Apple Silicon and Intel macOS before an approved npm
+publish. The initial package publication requires the maintainer's npm account;
+subsequent releases should use npm trusted publishing and provenance.
